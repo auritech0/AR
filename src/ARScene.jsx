@@ -11,10 +11,6 @@ export default function ARScene() {
 
     const start = async () => {
       try {
-        // =========================
-        // MINDAR
-        // =========================
-
         mindarThree = new MindARThree({
           container: containerRef.current,
           imageTargetSrc: "/ar/targets.mind",
@@ -24,105 +20,82 @@ export default function ARScene() {
 
         const { renderer, scene, camera } = mindarThree;
 
-        // =========================
+        // -------------------------
         // LUMIÈRE
-        // =========================
+        // -------------------------
 
         const light = new THREE.HemisphereLight(
           0xffffff,
           0xbbbbff,
-          1
+          2
         );
 
         scene.add(light);
 
-        // =========================
+        // -------------------------
         // ANCHOR
-        // =========================
+        // -------------------------
 
         const anchor = mindarThree.addAnchor(0);
 
-        // =========================
-        // CHARGEMENT DU LOGO
-        // =========================
+        // -------------------------
+        // CUBE TEST
+        // -------------------------
 
-        const textureLoader = new THREE.TextureLoader();
-
-        const logoTexture = textureLoader.load(
-          "/ar/models/auritech-logo.png",
-          () => {
-            console.log("Logo AuriTech chargé");
-          },
-          undefined,
-          (error) => {
-            console.error(
-              "Erreur chargement logo :",
-              error
-            );
-          }
+        const geometry = new THREE.BoxGeometry(
+          0.35,
+          0.35,
+          0.35
         );
 
-        // =========================
-        // MATÉRIAU DU LOGO
-        // =========================
+        const material = new THREE.MeshNormalMaterial();
 
-        const logoMaterial = new THREE.MeshBasicMaterial({
-          map: logoTexture,
-          transparent: true,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-        });
-
-        // =========================
-        // PLAN 3D
-        // =========================
-
-        const logoGeometry = new THREE.PlaneGeometry(
-          0.7,
-          0.7
+        const cube = new THREE.Mesh(
+          geometry,
+          material
         );
 
-        const logo = new THREE.Mesh(
-          logoGeometry,
-          logoMaterial
-        );
-
-        // Position au-dessus de la carte
-        logo.position.set(
+        cube.position.set(
           0,
           0,
-          0.15
+          0.2
         );
 
-        anchor.group.add(logo);
+        anchor.group.add(cube);
 
-        // =========================
+        console.log("Cube ajouté à l'anchor");
+
+        // -------------------------
+        // DÉTECTION
+        // -------------------------
+
+        anchor.onTargetFound = () => {
+          console.log("🎯 TARGET TROUVÉE !");
+          cube.visible = true;
+        };
+
+        anchor.onTargetLost = () => {
+          console.log("❌ TARGET PERDUE");
+          cube.visible = false;
+        };
+
+        // -------------------------
         // DÉMARRAGE
-        // =========================
+        // -------------------------
 
         await mindarThree.start();
 
         started = true;
 
-        console.log("CAMÉRA DÉMARRÉE");
-        console.log(
-          "Video:",
-          mindarThree.video
-        );
+        console.log("📷 CAMÉRA DÉMARRÉE");
 
-        // =========================
-        // ANIMATION
-        // =========================
+        // -------------------------
+        // RENDER
+        // -------------------------
 
         renderer.setAnimationLoop(() => {
-
-          // Petite rotation
-          logo.rotation.z =
-            Math.sin(Date.now() * 0.001) * 0.03;
-
-          // Effet flottant
-          logo.position.y =
-            Math.sin(Date.now() * 0.002) * 0.02;
+          cube.rotation.x += 0.01;
+          cube.rotation.y += 0.01;
 
           renderer.render(
             scene,
@@ -130,11 +103,11 @@ export default function ARScene() {
           );
         });
 
-        console.log("RENDERER DÉMARRÉ");
+        console.log("🎨 RENDERER DÉMARRÉ");
 
       } catch (error) {
         console.error(
-          "ERREUR MINDAR :",
+          "❌ ERREUR MINDAR :",
           error
         );
       }
@@ -142,9 +115,9 @@ export default function ARScene() {
 
     start();
 
-    // =========================
+    // -------------------------
     // NETTOYAGE
-    // =========================
+    // -------------------------
 
     return () => {
       console.log("Nettoyage AR");
