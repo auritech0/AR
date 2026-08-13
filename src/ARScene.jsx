@@ -9,6 +9,13 @@ export default function ARScene() {
     let mindarThree = null;
     let started = false;
 
+    // =========================================
+    // VARIABLES DE TRACKING
+    // =========================================
+
+    let targetLostTimer = null;
+    let targetIsLost = false;
+
     const start = async () => {
       try {
         // =========================================
@@ -43,20 +50,20 @@ export default function ARScene() {
         const textureLoader =
           new THREE.TextureLoader();
 
-        console.log("⏳ Chargement du logo...");
+        console.log(
+          "⏳ Chargement du logo..."
+        );
 
         textureLoader.load(
           "/ar/models/auritech-logo.png",
 
           // =====================================
-          // LOGO CHARGÉ
+          // SUCCESS
           // =====================================
 
           (texture) => {
-            console.log("✅ LOGO CHARGÉ !");
             console.log(
-              "Texture :",
-              texture
+              "✅ LOGO CHARGÉ !"
             );
 
             console.log(
@@ -75,9 +82,6 @@ export default function ARScene() {
                 map: texture,
                 transparent: true,
                 side: THREE.DoubleSide,
-
-                // Important pour éviter
-                // certains problèmes de profondeur
                 depthTest: false,
                 depthWrite: false,
               });
@@ -139,18 +143,85 @@ export default function ARScene() {
               logo.visible
             );
 
-            console.log(
-              "📍 Position :",
-              logo.position
-            );
-
             // =====================================
-            // TEST VISUEL
+            // TARGET FOUND
             // =====================================
 
-            // On ajoute une très légère rotation
-            // pour confirmer que c'est bien le logo
-            logo.userData.isLogo = true;
+            anchor.onTargetFound = () => {
+              console.log(
+                "🎯 TARGET TROUVÉE"
+              );
+
+              targetIsLost = false;
+
+              // Annuler le timer précédent
+              if (targetLostTimer) {
+                clearTimeout(
+                  targetLostTimer
+                );
+
+                targetLostTimer = null;
+              }
+
+              // Le logo redevient visible
+              logo.visible = true;
+
+              console.log(
+                "🟢 Tracking repris"
+              );
+            };
+
+            // =====================================
+            // TARGET LOST
+            // =====================================
+
+            anchor.onTargetLost = () => {
+              console.log(
+                "❌ TARGET PERDUE"
+              );
+
+              targetIsLost = true;
+
+              // On garde le logo visible
+              logo.visible = true;
+
+              console.log(
+                "⏱️ Logo conservé pendant 10 secondes..."
+              );
+
+              // Annuler un éventuel ancien timer
+              if (targetLostTimer) {
+                clearTimeout(
+                  targetLostTimer
+                );
+              }
+
+              // =====================================
+              // ATTENTE DE 10 SECONDES
+              // =====================================
+
+              targetLostTimer =
+                setTimeout(() => {
+
+                  // Vérifier que la cible
+                  // n'a toujours pas été retrouvée
+                  if (targetIsLost) {
+
+                    console.log(
+                      "⏰ 10 secondes écoulées"
+                    );
+
+                    console.log(
+                      "🔴 Logo masqué"
+                    );
+
+                    logo.visible = false;
+                  }
+
+                  targetLostTimer = null;
+
+                }, 10000);
+            };
           },
 
           // =====================================
@@ -159,6 +230,7 @@ export default function ARScene() {
 
           (progress) => {
             if (progress.total > 0) {
+
               const percent =
                 Math.round(
                   (progress.loaded /
@@ -185,26 +257,6 @@ export default function ARScene() {
         );
 
         // =========================================
-        // TARGET TROUVÉE
-        // =========================================
-
-        anchor.onTargetFound = () => {
-          console.log(
-            "🎯 TARGET TROUVÉE"
-          );
-        };
-
-        // =========================================
-        // TARGET PERDUE
-        // =========================================
-
-        anchor.onTargetLost = () => {
-          console.log(
-            "❌ TARGET PERDUE"
-          );
-        };
-
-        // =========================================
         // DÉMARRAGE
         // =========================================
 
@@ -221,6 +273,11 @@ export default function ARScene() {
         // =========================================
 
         renderer.setAnimationLoop(() => {
+
+          // =======================================
+          // RENDU
+          // =======================================
+
           renderer.render(
             scene,
             camera
@@ -232,12 +289,17 @@ export default function ARScene() {
         );
 
       } catch (error) {
+
         console.error(
           "❌ ERREUR MINDAR :",
           error
         );
       }
     };
+
+    // =========================================
+    // START
+    // =========================================
 
     start();
 
@@ -246,15 +308,26 @@ export default function ARScene() {
     // =========================================
 
     return () => {
+
       console.log(
         "🧹 Nettoyage AR"
       );
+
+      // Annuler le timer
+      if (targetLostTimer) {
+        clearTimeout(
+          targetLostTimer
+        );
+
+        targetLostTimer = null;
+      }
 
       if (
         mindarThree &&
         started
       ) {
         try {
+
           mindarThree.renderer.setAnimationLoop(
             null
           );
@@ -262,6 +335,7 @@ export default function ARScene() {
           mindarThree.stop();
 
         } catch (error) {
+
           console.warn(
             "⚠️ Erreur nettoyage :",
             error
@@ -269,7 +343,12 @@ export default function ARScene() {
         }
       }
     };
+
   }, []);
+
+  // =========================================
+  // CONTENEUR AR
+  // =========================================
 
   return (
     <div
