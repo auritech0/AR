@@ -11,6 +11,10 @@ export default function ARScene() {
 
     const start = async () => {
       try {
+        // =========================
+        // MINDAR
+        // =========================
+
         mindarThree = new MindARThree({
           container: containerRef.current,
           imageTargetSrc: "/ar/targets.mind",
@@ -20,9 +24,9 @@ export default function ARScene() {
 
         const { renderer, scene, camera } = mindarThree;
 
-        // -------------------------
+        // =========================
         // LUMIÈRE
-        // -------------------------
+        // =========================
 
         const light = new THREE.HemisphereLight(
           0xffffff,
@@ -32,56 +36,101 @@ export default function ARScene() {
 
         scene.add(light);
 
-        // -------------------------
+        // =========================
         // ANCHOR
-        // -------------------------
+        // =========================
 
         const anchor = mindarThree.addAnchor(0);
 
-        // -------------------------
-        // CUBE TEST
-        // -------------------------
+        // =========================
+        // CHARGEMENT DU LOGO
+        // =========================
 
-        const geometry = new THREE.BoxGeometry(
-          0.35,
-          0.35,
-          0.35
+        const textureLoader = new THREE.TextureLoader();
+
+        const logoTexture = textureLoader.load(
+          "/ar/models/auritech-logo.png",
+
+          // Chargement réussi
+          () => {
+            console.log("✅ Logo AuriTech chargé");
+          },
+
+          // Progression
+          undefined,
+
+          // Erreur
+          (error) => {
+            console.error(
+              "❌ Erreur chargement logo :",
+              error
+            );
+          }
         );
 
-        const material = new THREE.MeshNormalMaterial();
+        // =========================
+        // MATÉRIAU DU LOGO
+        // =========================
 
-        const cube = new THREE.Mesh(
-          geometry,
-          material
+        const logoMaterial = new THREE.MeshBasicMaterial({
+          map: logoTexture,
+          transparent: true,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+
+        // =========================
+        // PLAN DU LOGO
+        // =========================
+
+        const logoGeometry = new THREE.PlaneGeometry(
+          0.7,
+          0.7
         );
 
-        cube.position.set(
+        const logo = new THREE.Mesh(
+          logoGeometry,
+          logoMaterial
+        );
+
+        // Position du logo
+        logo.position.set(
           0,
           0,
           0.2
         );
 
-        anchor.group.add(cube);
+        // Caché jusqu'à la détection
+        logo.visible = false;
 
-        console.log("Cube ajouté à l'anchor");
+        // Ajouter le logo à l'anchor
+        anchor.group.add(logo);
 
-        // -------------------------
-        // DÉTECTION
-        // -------------------------
+        console.log("✅ Logo ajouté à l'anchor");
+
+        // =========================
+        // TARGET TROUVÉE
+        // =========================
 
         anchor.onTargetFound = () => {
           console.log("🎯 TARGET TROUVÉE !");
-          cube.visible = true;
+
+          logo.visible = true;
         };
+
+        // =========================
+        // TARGET PERDUE
+        // =========================
 
         anchor.onTargetLost = () => {
           console.log("❌ TARGET PERDUE");
-          cube.visible = false;
+
+          logo.visible = false;
         };
 
-        // -------------------------
+        // =========================
         // DÉMARRAGE
-        // -------------------------
+        // =========================
 
         await mindarThree.start();
 
@@ -89,13 +138,20 @@ export default function ARScene() {
 
         console.log("📷 CAMÉRA DÉMARRÉE");
 
-        // -------------------------
+        // =========================
         // RENDER
-        // -------------------------
+        // =========================
 
         renderer.setAnimationLoop(() => {
-          cube.rotation.x += 0.01;
-          cube.rotation.y += 0.01;
+          if (logo.visible) {
+            // Petit mouvement flottant
+            logo.position.y =
+              Math.sin(Date.now() * 0.002) * 0.02;
+
+            // Petite rotation
+            logo.rotation.z =
+              Math.sin(Date.now() * 0.001) * 0.03;
+          }
 
           renderer.render(
             scene,
@@ -115,12 +171,12 @@ export default function ARScene() {
 
     start();
 
-    // -------------------------
+    // =========================
     // NETTOYAGE
-    // -------------------------
+    // =========================
 
     return () => {
-      console.log("Nettoyage AR");
+      console.log("🧹 Nettoyage AR");
 
       if (mindarThree && started) {
         try {
