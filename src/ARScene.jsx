@@ -11,59 +11,18 @@ export default function ARScene() {
 
     const start = async () => {
       try {
-        // =========================================
-        // MINDAR
-        // =========================================
-
         mindarThree = new MindARThree({
           container: containerRef.current,
           imageTargetSrc: "/ar/targets.mind",
         });
 
-        const {
-          renderer,
-          scene,
-          camera,
-        } = mindarThree;
-
-        console.log("✅ MindAR créé");
-
-        // =========================================
-        // ANCHOR
-        // =========================================
-
+        const { renderer, scene, camera } = mindarThree;
         const anchor = mindarThree.addAnchor(0);
 
-        console.log("✅ Anchor créé");
-
-        // =========================================
-        // CHARGEMENT DU LOGO
-        // =========================================
-
         const textureLoader = new THREE.TextureLoader();
-
-        console.log("⏳ Chargement du logo...");
-
         textureLoader.load(
           "/ar/models/auritech-logo.png",
-
-          // =====================================
-          // LOGO CHARGÉ
-          // =====================================
-
           (texture) => {
-            console.log("✅ LOGO CHARGÉ !");
-            console.log(
-              "📐 Dimensions :",
-              texture.image.width,
-              "x",
-              texture.image.height
-            );
-
-            // =====================================
-            // MATÉRIAU
-            // =====================================
-
             const material = new THREE.MeshBasicMaterial({
               map: texture,
               transparent: true,
@@ -71,397 +30,190 @@ export default function ARScene() {
               depthTest: false,
               depthWrite: false,
             });
-
-            // =====================================
-            // PLAN
-            // =====================================
-
-            const geometry = new THREE.PlaneGeometry(
-              0.8,
-              0.8
-            );
-
-            const logo = new THREE.Mesh(
-              geometry,
-              material
-            );
-
-            // =====================================
-            // POSITION
-            // =====================================
-
-            logo.position.set(
-              0,
-              0,
-              0.2
-            );
-
-            // =====================================
-            // ROTATION
-            // =====================================
-
-            logo.rotation.set(
-              0,
-              0,
-              0
-            );
-
-            // =====================================
-            // VISIBILITÉ
-            // =====================================
-
+            const geometry = new THREE.PlaneGeometry(0.8, 0.8);
+            const logo = new THREE.Mesh(geometry, material);
+            logo.position.set(0, 0, 0.2);
             logo.visible = true;
-
-            // =====================================
-            // AJOUT À L'ANCHOR
-            // =====================================
-
             anchor.group.add(logo);
-
-            // Sauvegarde de la référence
             anchor.userData.logo = logo;
-
-            console.log(
-              "🖼️ LOGO AJOUTÉ À L'ANCHOR"
-            );
           },
-
-          // =====================================
-          // PROGRESSION
-          // =====================================
-
-          (progress) => {
-            if (progress.total > 0) {
-              const percent = Math.round(
-                (progress.loaded / progress.total) * 100
-              );
-
-              console.log(
-                `📥 Logo : ${percent}%`
-              );
-            }
-          },
-
-          // =====================================
-          // ERREUR
-          // =====================================
-
-          (error) => {
-            console.error(
-              "❌ ERREUR CHARGEMENT LOGO",
-              error
-            );
-          }
+          undefined,
+          (error) => console.error("Erreur chargement logo :", error)
         );
-
-        // =========================================
-        // TARGET TROUVÉE
-        // =========================================
 
         anchor.onTargetFound = () => {
-          console.log("🎯 TARGET TROUVÉE");
-
-          // Afficher l'interface
-          const interfaceAR =
-            document.getElementById(
-              "ar-business-card"
-            );
-
-          if (interfaceAR) {
-            interfaceAR.style.opacity = "1";
-            interfaceAR.style.pointerEvents = "auto";
+          const card = document.getElementById("ar-business-card");
+          if (card) {
+            card.classList.add("ar-card-visible");
           }
         };
 
-        // =========================================
-        // TARGET PERDUE
-        // =========================================
-
         anchor.onTargetLost = () => {
-          console.log("❌ TARGET PERDUE");
-
-          // Pour l'instant on garde
-          // l'interface visible.
-          //
-          // Cela permettra plus tard
-          // de mettre en place le système
-          // des 10 secondes.
-
+          // Interface conservée à l'écran pour l'instant
         };
 
-        // =========================================
-        // DÉMARRAGE
-        // =========================================
-
         await mindarThree.start();
-
         started = true;
 
-        console.log(
-          "📷 CAMÉRA DÉMARRÉE"
-        );
-
-        // =========================================
-        // RENDER
-        // =========================================
-
         renderer.setAnimationLoop(() => {
-          renderer.render(
-            scene,
-            camera
-          );
+          renderer.render(scene, camera);
         });
-
-        console.log(
-          "🎨 RENDERER DÉMARRÉ"
-        );
-
       } catch (error) {
-        console.error(
-          "❌ ERREUR MINDAR :",
-          error
-        );
+        console.error("Erreur MindAR :", error);
       }
     };
 
     start();
 
-    // =========================================
-    // NETTOYAGE
-    // =========================================
-
     return () => {
-      console.log(
-        "🧹 Nettoyage AR"
-      );
-
-      if (
-        mindarThree &&
-        started
-      ) {
+      if (mindarThree && started) {
         try {
-          mindarThree.renderer.setAnimationLoop(
-            null
-          );
-
+          mindarThree.renderer.setAnimationLoop(null);
           mindarThree.stop();
-
         } catch (error) {
-          console.warn(
-            "⚠️ Erreur nettoyage :",
-            error
-          );
+          console.warn("Erreur nettoyage :", error);
         }
       }
     };
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width: "100vw",
-        height: "100vh",
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
+    <div ref={containerRef} className="ar-container">
+      <style>{`
+        .ar-container {
+          width: 100vw;
+          height: 100vh;
+          position: relative;
+          overflow: hidden;
+        }
 
-      {/* ========================================= */}
-      {/* CARTE DE VISITE AR */}
-      {/* ========================================= */}
+        .ar-card {
+          position: absolute;
+          bottom: max(24px, env(safe-area-inset-bottom));
+          left: 50%;
+          transform: translate(-50%, 16px);
+          width: min(92%, 400px);
+          z-index: 1000;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.45s ease, transform 0.45s ease;
+        }
 
-      <div
-        id="ar-business-card"
-        style={{
-          position: "absolute",
+        .ar-card-visible {
+          opacity: 1;
+          transform: translate(-50%, 0);
+          pointer-events: auto;
+        }
 
-          bottom: "25px",
+        .ar-card-inner {
+          background: linear-gradient(180deg, rgba(20, 20, 24, 0.82), rgba(10, 10, 12, 0.88));
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          border-radius: 20px;
+          padding: 24px 22px;
+          color: #ffffff;
+          text-align: center;
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
 
-          left: "50%",
+        .ar-card-name {
+          font-size: 21px;
+          font-weight: 700;
+          letter-spacing: 0.2px;
+          margin-bottom: 3px;
+        }
 
-          transform: "translateX(-50%)",
+        .ar-card-role {
+          font-size: 13px;
+          font-weight: 500;
+          color: rgba(255, 255, 255, 0.6);
+          text-transform: uppercase;
+          letter-spacing: 0.6px;
+          margin-bottom: 16px;
+        }
 
-          width: "90%",
+        .ar-card-divider {
+          height: 1px;
+          background: rgba(255, 255, 255, 0.1);
+          margin: 0 0 16px;
+        }
 
-          maxWidth: "420px",
+        .ar-card-services {
+          font-size: 13.5px;
+          line-height: 1.7;
+          color: rgba(255, 255, 255, 0.85);
+          margin-bottom: 20px;
+        }
 
-          zIndex: 1000,
+        .ar-card-actions {
+          display: flex;
+          gap: 10px;
+        }
 
-          opacity: "0",
+        .ar-btn {
+          flex: 1;
+          padding: 13px 10px;
+          border-radius: 13px;
+          text-decoration: none;
+          font-size: 14px;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          transition: transform 0.15s ease, filter 0.15s ease;
+        }
 
-          pointerEvents: "none",
+        .ar-btn:active {
+          transform: scale(0.96);
+        }
 
-          transition:
-            "opacity 0.4s ease",
-        }}
-      >
+        .ar-btn-whatsapp {
+          background: #25d366;
+          color: #ffffff;
+        }
 
-        {/* ===================================== */}
-        {/* INFORMATIONS */}
-        {/* ===================================== */}
+        .ar-btn-whatsapp:hover {
+          filter: brightness(1.08);
+        }
 
-        <div
-          style={{
-            background:
-              "rgba(0, 0, 0, 0.75)",
+        .ar-btn-call {
+          background: #2563eb;
+          color: #ffffff;
+        }
 
-            backdropFilter:
-              "blur(10px)",
+        .ar-btn-call:hover {
+          filter: brightness(1.1);
+        }
+      `}</style>
 
-            WebkitBackdropFilter:
-              "blur(10px)",
-
-            borderRadius: "18px",
-
-            padding: "18px",
-
-            color: "#ffffff",
-
-            textAlign: "center",
-
-            boxShadow:
-              "0 8px 30px rgba(0,0,0,0.35)",
-
-            border:
-              "1px solid rgba(255,255,255,0.15)",
-          }}
-        >
-
-          {/* NOM */}
-
-          <div
-            style={{
-              fontSize: "22px",
-
-              fontWeight: "700",
-
-              marginBottom: "4px",
-            }}
-          >
-            AuriTech
-          </div>
-
-          {/* MÉTIER */}
-
-          <div
-            style={{
-              fontSize: "14px",
-
-              opacity: "0.85",
-
-              marginBottom: "14px",
-            }}
-          >
-            Génie logiciel
-          </div>
-
-          {/* SERVICES */}
-
-          <div
-            style={{
-              fontSize: "13px",
-
-              lineHeight: "1.6",
-
-              opacity: "0.9",
-
-              marginBottom: "16px",
-            }}
-          >
+      <div id="ar-business-card" className="ar-card">
+        <div className="ar-card-inner">
+          <div className="ar-card-name">AuriTech</div>
+          <div className="ar-card-role">Génie logiciel</div>
+          <div className="ar-card-divider" />
+          <div className="ar-card-services">
             Développement Web • Mobile
             <br />
             Logiciels sur mesure
           </div>
-
-          {/* ================================= */}
-          {/* BOUTONS */}
-          {/* ================================= */}
-
-          <div
-            style={{
-              display: "flex",
-
-              gap: "10px",
-            }}
-          >
-
-            {/* WHATSAPP */}
-
-            <a
+          <div className="ar-card-actions">
+            
               href="https://wa.me/24176516458"
               target="_blank"
               rel="noopener noreferrer"
-
-              style={{
-                flex: "1",
-
-                padding: "13px 10px",
-
-                borderRadius: "12px",
-
-                background: "#25D366",
-
-                color: "#ffffff",
-
-                textDecoration: "none",
-
-                fontSize: "14px",
-
-                fontWeight: "700",
-
-                display: "flex",
-
-                alignItems: "center",
-
-                justifyContent: "center",
-
-                gap: "6px",
-              }}
+              className="ar-btn ar-btn-whatsapp"
             >
               💬 WhatsApp
             </a>
-
-            {/* APPEL */}
-
-            <a
-              href="tel:+24176516458"
-
-              style={{
-                flex: "1",
-
-                padding: "13px 10px",
-
-                borderRadius: "12px",
-
-                background: "#2563EB",
-
-                color: "#ffffff",
-
-                textDecoration: "none",
-
-                fontSize: "14px",
-
-                fontWeight: "700",
-
-                display: "flex",
-
-                alignItems: "center",
-
-                justifyContent: "center",
-
-                gap: "6px",
-              }}
-            >
+            <a href="tel:+24176516458" className="ar-btn ar-btn-call">
               📞 Appeler
             </a>
-
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 }
