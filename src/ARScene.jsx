@@ -11,155 +11,225 @@ export default function ARScene() {
 
     const start = async () => {
       try {
-        // =========================
+        // =========================================
         // MINDAR
-        // =========================
+        // =========================================
 
         mindarThree = new MindARThree({
           container: containerRef.current,
           imageTargetSrc: "/ar/targets.mind",
         });
 
-        console.log("MindAR créé");
+        const {
+          renderer,
+          scene,
+          camera,
+        } = mindarThree;
 
-        const { renderer, scene, camera } = mindarThree;
+        console.log("✅ MindAR créé");
 
-        // =========================
-        // LUMIÈRE
-        // =========================
-
-        const light = new THREE.HemisphereLight(
-          0xffffff,
-          0xbbbbff,
-          2
-        );
-
-        scene.add(light);
-
-        // =========================
+        // =========================================
         // ANCHOR
-        // =========================
+        // =========================================
 
         const anchor = mindarThree.addAnchor(0);
 
-        // =========================
+        console.log("✅ Anchor créé");
+
+        // =========================================
         // CHARGEMENT DU LOGO
-        // =========================
+        // =========================================
 
-        const textureLoader = new THREE.TextureLoader();
+        const textureLoader =
+          new THREE.TextureLoader();
 
-        const logoTexture = textureLoader.load(
+        console.log("⏳ Chargement du logo...");
+
+        textureLoader.load(
           "/ar/models/auritech-logo.png",
 
-          // Chargement réussi
-          () => {
-            console.log("✅ Logo AuriTech chargé");
+          // =====================================
+          // LOGO CHARGÉ
+          // =====================================
+
+          (texture) => {
+            console.log("✅ LOGO CHARGÉ !");
+            console.log(
+              "Texture :",
+              texture
+            );
+
+            console.log(
+              "📐 Dimensions :",
+              texture.image.width,
+              "x",
+              texture.image.height
+            );
+
+            // =====================================
+            // MATÉRIAU
+            // =====================================
+
+            const material =
+              new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                side: THREE.DoubleSide,
+
+                // Important pour éviter
+                // certains problèmes de profondeur
+                depthTest: false,
+                depthWrite: false,
+              });
+
+            // =====================================
+            // PLAN
+            // =====================================
+
+            const geometry =
+              new THREE.PlaneGeometry(
+                0.8,
+                0.8
+              );
+
+            const logo =
+              new THREE.Mesh(
+                geometry,
+                material
+              );
+
+            // =====================================
+            // POSITION
+            // =====================================
+
+            logo.position.set(
+              0,
+              0,
+              0.2
+            );
+
+            // =====================================
+            // ROTATION
+            // =====================================
+
+            logo.rotation.set(
+              0,
+              0,
+              0
+            );
+
+            // =====================================
+            // VISIBILITÉ
+            // =====================================
+
+            logo.visible = true;
+
+            // =====================================
+            // AJOUT À L'ANCHOR
+            // =====================================
+
+            anchor.group.add(logo);
+
+            console.log(
+              "🖼️ LOGO AJOUTÉ À L'ANCHOR"
+            );
+
+            console.log(
+              "👁️ Logo visible :",
+              logo.visible
+            );
+
+            console.log(
+              "📍 Position :",
+              logo.position
+            );
+
+            // =====================================
+            // TEST VISUEL
+            // =====================================
+
+            // On ajoute une très légère rotation
+            // pour confirmer que c'est bien le logo
+            logo.userData.isLogo = true;
           },
 
-          // Progression
-          undefined,
+          // =====================================
+          // PROGRESSION
+          // =====================================
 
-          // Erreur
+          (progress) => {
+            if (progress.total > 0) {
+              const percent =
+                Math.round(
+                  (progress.loaded /
+                    progress.total) *
+                    100
+                );
+
+              console.log(
+                `📥 Logo : ${percent}%`
+              );
+            }
+          },
+
+          // =====================================
+          // ERREUR
+          // =====================================
+
           (error) => {
             console.error(
-              "❌ Erreur chargement logo :",
+              "❌ ERREUR CHARGEMENT LOGO",
               error
             );
           }
         );
 
-        // =========================
-        // MATÉRIAU DU LOGO
-        // =========================
-
-        const logoMaterial = new THREE.MeshBasicMaterial({
-          map: logoTexture,
-          transparent: true,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-        });
-
-        // =========================
-        // PLAN DU LOGO
-        // =========================
-
-        const logoGeometry = new THREE.PlaneGeometry(
-          0.7,
-          0.7
-        );
-
-        const logo = new THREE.Mesh(
-          logoGeometry,
-          logoMaterial
-        );
-
-        // Position du logo
-        logo.position.set(
-          0,
-          0,
-          0.2
-        );
-
-        // Caché jusqu'à la détection
-        logo.visible = false;
-
-        // Ajouter le logo à l'anchor
-        anchor.group.add(logo);
-
-        console.log("✅ Logo ajouté à l'anchor");
-
-        // =========================
+        // =========================================
         // TARGET TROUVÉE
-        // =========================
+        // =========================================
 
         anchor.onTargetFound = () => {
-          console.log("🎯 TARGET TROUVÉE !");
-
-          logo.visible = true;
+          console.log(
+            "🎯 TARGET TROUVÉE"
+          );
         };
 
-        // =========================
+        // =========================================
         // TARGET PERDUE
-        // =========================
+        // =========================================
 
         anchor.onTargetLost = () => {
-          console.log("❌ TARGET PERDUE");
-
-          logo.visible = false;
+          console.log(
+            "❌ TARGET PERDUE"
+          );
         };
 
-        // =========================
+        // =========================================
         // DÉMARRAGE
-        // =========================
+        // =========================================
 
         await mindarThree.start();
 
         started = true;
 
-        console.log("📷 CAMÉRA DÉMARRÉE");
+        console.log(
+          "📷 CAMÉRA DÉMARRÉE"
+        );
 
-        // =========================
+        // =========================================
         // RENDER
-        // =========================
+        // =========================================
 
         renderer.setAnimationLoop(() => {
-          if (logo.visible) {
-            // Petit mouvement flottant
-            logo.position.y =
-              Math.sin(Date.now() * 0.002) * 0.02;
-
-            // Petite rotation
-            logo.rotation.z =
-              Math.sin(Date.now() * 0.001) * 0.03;
-          }
-
           renderer.render(
             scene,
             camera
           );
         });
 
-        console.log("🎨 RENDERER DÉMARRÉ");
+        console.log(
+          "🎨 RENDERER DÉMARRÉ"
+        );
 
       } catch (error) {
         console.error(
@@ -171,20 +241,29 @@ export default function ARScene() {
 
     start();
 
-    // =========================
+    // =========================================
     // NETTOYAGE
-    // =========================
+    // =========================================
 
     return () => {
-      console.log("🧹 Nettoyage AR");
+      console.log(
+        "🧹 Nettoyage AR"
+      );
 
-      if (mindarThree && started) {
+      if (
+        mindarThree &&
+        started
+      ) {
         try {
-          mindarThree.renderer.setAnimationLoop(null);
+          mindarThree.renderer.setAnimationLoop(
+            null
+          );
+
           mindarThree.stop();
+
         } catch (error) {
           console.warn(
-            "Erreur nettoyage MindAR :",
+            "⚠️ Erreur nettoyage :",
             error
           );
         }
