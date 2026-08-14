@@ -1,591 +1,649 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { MindARThree } from "mind-ar/dist/mindar-image-three.prod.js";
 
-const LOGO_STORAGE_KEY = "ar_logo_transform_v1";
-const CARD_STORAGE_KEY = "ar_card_pos_v1";
-const PX_TO_UNIT = 0.0035; // sensibilité du drag du logo (px écran -> unités 3D)
-
-const defaultLogoTransform = { x: 0, y: 0, scale: 1, rotation: 0 };
-
-function loadJSON(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveJSON(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // stockage indisponible, on ignore silencieusement
-  }
-}
-
 export default function ARScene() {
   const containerRef = useRef(null);
-  const logoRef = useRef(null);
-  const anchorRef = useRef(null);
-  const foundOnceRef = useRef(false);
+  const mindarRef = useRef(null);
 
-  const [editMode, setEditMode] = useState(false);
-  const [editTarget, setEditTarget] = useState("logo"); // "logo" | "card"
-  const [logoTransform, setLogoTransform] = useState(() =>
-    loadJSON(LOGO_STORAGE_KEY, defaultLogoTransform)
-  );
+  const [detected, setDetected] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const [cardPos, setCardPos] = useState(() =>
-    loadJSON(CARD_STORAGE_KEY, null)
-  );
-
-  const logoTransformRef = useRef(logoTransform);
-  logoTransformRef.current = logoTransform;
-
-  // Position par défaut de la carte, calculée une fois le viewport connu
-  useEffect(() => {
-    if (cardPos === null) {
-      const defaultPos = {
-        x: window.innerWidth / 2,
-        y: window.innerHeight * 0.7,
-      };
-      setCardPos(defaultPos);
-    }
-  }, [cardPos]);
-
-  // Applique le transform stocké au mesh du logo dès qu'il existe
-  const applyLogoTransform = useCallback((t) => {
-    const logo = logoRef.current;
-    if (!logo) return;
-    logo.position.x = t.x;
-    logo.position.y = t.y;
-    logo.scale.set(t.scale, t.scale, t.scale);
-    logo.rotation.z = t.rotation;
-  }, []);
-
-  useEffect(() => {
-    applyLogoTransform(logoTransform);
-    saveJSON(LOGO_STORAGE_KEY, logoTransform);
-  }, [logoTransform, applyLogoTransform]);
-
-  useEffect(() => {
-    if (cardPos) saveJSON(CARD_STORAGE_KEY, cardPos);
-  }, [cardPos]);
-
-  // ============================================
-  // INITIALISATION MINDAR / THREE
-  // ============================================
   useEffect(() => {
     let mindarThree = null;
-    let started = false;
+    let animationId = null;
+    let mounted = true;
 
     const start = async () => {
       try {
+        const container = containerRef.current;
+
+        if (!container) return;
+
+        /*
+         * --------------------------------------------------
+         * MINDAR
+         * --------------------------------------------------
+         */
+
         mindarThree = new MindARThree({
-          container: containerRef.current,
+          container,
+
           imageTargetSrc: "/ar/targets.mind",
+
+          /*
+           * Paramètres pour rendre le tracking plus fluide.
+           */
+          filterMinCF: 0.0001,
+          filterBeta: 0.001,
+
+          /*
+           * Tolérance lorsque l'image est momentanément
+           * perdue.
+           */
+          missTolerance: 8,
+          warmupTolerance: 5,
         });
 
-        const { renderer, scene, camera } = mindarThree;
-        const anchor = mindarThree.addAnchor(0);
-        anchorRef.current = anchor;
+        mindarRef.current = mindarThree;
 
-        const textureLoader = new THREE.TextureLoader();
+        const { renderer, scene, camera } = mindarThree;
+
+        /*
+         * --------------------------------------------------
+         * RENDERER
+         * --------------------------------------------------
+         */
+
+        renderer.setPixelRatio(
+          Math.min(window.devicePixelRatio, 2)
+        );
+
+        renderer.setSize(
+          window.innerWidth,
+          window.innerHeight
+        );
+
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+        /*
+         * --------------------------------------------------
+         * SCENE
+         * --------------------------------------------------
+         */
+
+        scene.background = null;
+
+        /*
+         * --------------------------------------------------
+         * ANCHOR
+         * --------------------------------------------------
+         */
+
+        const anchor = mindarThree.addAnchor(0);
+
+        /*
+         * --------------------------------------------------
+         * GROUPE AR
+         * --------------------------------------------------
+         */
+
+        const arGroup = new THREE.Group();
+
+        anchor.group.add(arGroup);
+
+        /*
+         * --------------------------------------------------
+         * HALO PRINCIPAL
+         * --------------------------------------------------
+         */
+
+        const ringGeometry = new THREE.RingGeometry(
+          0.34,
+          0.37,
+          64
+        );
+
+        const ringMaterial = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.85,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+
+        const ring = new THREE.Mesh(
+          ringGeometry,
+          ringMaterial
+        );
+
+        ring.position.set(0, 0, 0.05);
+
+        arGroup.add(ring);
+
+        /*
+         * --------------------------------------------------
+         * SECOND HALO
+         * --------------------------------------------------
+         */
+
+        const outerRingGeometry = new THREE.RingGeometry(
+          0.46,
+          0.465,
+          64
+        );
+
+        const outerRingMaterial =
+          new THREE.MeshBasicMaterial({
+            color: 0x7dd3fc,
+            transparent: true,
+            opacity: 0.35,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          });
+
+        const outerRing = new THREE.Mesh(
+          outerRingGeometry,
+          outerRingMaterial
+        );
+
+        outerRing.position.set(0, 0, 0.04);
+
+        arGroup.add(outerRing);
+
+        /*
+         * --------------------------------------------------
+         * PETITES PARTICULES
+         * --------------------------------------------------
+         */
+
+        const particleCount = 30;
+
+        const particlePositions = new Float32Array(
+          particleCount * 3
+        );
+
+        for (let i = 0; i < particleCount; i++) {
+          const angle =
+            (i / particleCount) * Math.PI * 2;
+
+          const radius =
+            0.45 + Math.random() * 0.18;
+
+          particlePositions[i * 3] =
+            Math.cos(angle) * radius;
+
+          particlePositions[i * 3 + 1] =
+            Math.sin(angle) * radius;
+
+          particlePositions[i * 3 + 2] = 0.06;
+        }
+
+        const particlesGeometry =
+          new THREE.BufferGeometry();
+
+        particlesGeometry.setAttribute(
+          "position",
+          new THREE.BufferAttribute(
+            particlePositions,
+            3
+          )
+        );
+
+        const particlesMaterial =
+          new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.025,
+            transparent: true,
+            opacity: 0.75,
+            depthWrite: false,
+          });
+
+        const particles = new THREE.Points(
+          particlesGeometry,
+          particlesMaterial
+        );
+
+        arGroup.add(particles);
+
+        /*
+         * --------------------------------------------------
+         * LOGO
+         * --------------------------------------------------
+         *
+         * Petit logo seulement.
+         * Il ne prend plus tout l'écran.
+         */
+
+        const textureLoader =
+          new THREE.TextureLoader();
+
         textureLoader.load(
           "/ar/models/auritech-logo.png",
           (texture) => {
-            const material = new THREE.MeshBasicMaterial({
-              map: texture,
-              transparent: true,
-              side: THREE.DoubleSide,
-              depthTest: false,
-              depthWrite: false,
-            });
-            const geometry = new THREE.PlaneGeometry(0.8, 0.8);
-            const logo = new THREE.Mesh(geometry, material);
-            logo.position.set(0, 0, 0.2);
-            logo.visible = true;
+            if (!mounted) return;
 
-            anchor.group.add(logo);
-            anchor.userData.logo = logo;
-            logoRef.current = logo;
+            texture.colorSpace =
+              THREE.SRGBColorSpace;
 
-            // Réapplique la position/échelle/rotation sauvegardées
-            applyLogoTransform(logoTransformRef.current);
+            const image =
+              texture.image;
+
+            const aspect =
+              image.width / image.height;
+
+            const height = 0.22;
+
+            const width =
+              height * aspect;
+
+            const logoGeometry =
+              new THREE.PlaneGeometry(
+                width,
+                height
+              );
+
+            const logoMaterial =
+              new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthTest: false,
+                depthWrite: false,
+              });
+
+            const logo =
+              new THREE.Mesh(
+                logoGeometry,
+                logoMaterial
+              );
+
+            logo.position.set(
+              0,
+              0,
+              0.08
+            );
+
+            arGroup.add(logo);
           },
           undefined,
-          (error) => console.error("Erreur chargement logo :", error)
+          (error) => {
+            console.warn(
+              "Logo impossible à charger :",
+              error
+            );
+          }
         );
 
+        /*
+         * --------------------------------------------------
+         * ETAT INITIAL
+         * --------------------------------------------------
+         */
+
+        arGroup.visible = false;
+
+        /*
+         * --------------------------------------------------
+         * TARGET FOUND
+         * --------------------------------------------------
+         */
+
         anchor.onTargetFound = () => {
-          foundOnceRef.current = true;
-          const card = document.getElementById("ar-business-card");
-          if (card) card.classList.add("ar-card-visible");
+          if (!mounted) return;
+
+          arGroup.visible = true;
+
+          setDetected(true);
         };
+
+        /*
+         * --------------------------------------------------
+         * TARGET LOST
+         * --------------------------------------------------
+         */
 
         anchor.onTargetLost = () => {
-          // On garde le logo et la carte affichés (voir boucle de rendu ci-dessous)
+          if (!mounted) return;
+
+          arGroup.visible = false;
+
+          setDetected(false);
         };
 
+        /*
+         * --------------------------------------------------
+         * DEMARRAGE
+         * --------------------------------------------------
+         */
+
         await mindarThree.start();
-        started = true;
+
+        if (!mounted) return;
+
+        setLoading(false);
+
+        /*
+         * --------------------------------------------------
+         * ANIMATION
+         * --------------------------------------------------
+         */
+
+        const clock = new THREE.Clock();
 
         renderer.setAnimationLoop(() => {
-          // Force le logo à rester visible même après perte de la cible,
-          // au lieu de laisser MindAR le masquer automatiquement.
-          if (foundOnceRef.current && anchor.group) {
-            anchor.group.visible = true;
-          }
-          renderer.render(scene, camera);
+          const elapsed =
+            clock.getElapsedTime();
+
+          /*
+           * Rotation douce du halo.
+           */
+
+          ring.rotation.z =
+            elapsed * 0.35;
+
+          outerRing.rotation.z =
+            -elapsed * 0.18;
+
+          particles.rotation.z =
+            elapsed * 0.12;
+
+          /*
+           * Respiration légère.
+           */
+
+          const pulse =
+            1 +
+            Math.sin(elapsed * 2.5) *
+              0.035;
+
+          ring.scale.set(
+            pulse,
+            pulse,
+            pulse
+          );
+
+          /*
+           * Opacité dynamique.
+           */
+
+          ringMaterial.opacity =
+            0.65 +
+            Math.sin(elapsed * 2.5) *
+              0.15;
+
+          renderer.render(
+            scene,
+            camera
+          );
         });
       } catch (error) {
-        console.error("Erreur MindAR :", error);
+        console.error(
+          "Erreur démarrage AR :",
+          error
+        );
+
+        setLoading(false);
       }
     };
 
     start();
 
+    /*
+     * ----------------------------------------------------
+     * RESIZE
+     * ----------------------------------------------------
+     */
+
+    const handleResize = () => {
+      if (!mindarThree) return;
+
+      const renderer =
+        mindarThree.renderer;
+
+      renderer.setSize(
+        window.innerWidth,
+        window.innerHeight
+      );
+
+      renderer.setPixelRatio(
+        Math.min(
+          window.devicePixelRatio,
+          2
+        )
+      );
+    };
+
+    window.addEventListener(
+      "resize",
+      handleResize
+    );
+
+    /*
+     * ----------------------------------------------------
+     * CLEANUP
+     * ----------------------------------------------------
+     */
+
     return () => {
-      if (mindarThree && started) {
+      mounted = false;
+
+      window.removeEventListener(
+        "resize",
+        handleResize
+      );
+
+      if (mindarThree) {
         try {
-          mindarThree.renderer.setAnimationLoop(null);
+          mindarThree.renderer.setAnimationLoop(
+            null
+          );
+
           mindarThree.stop();
+
+          mindarThree.renderer.dispose();
         } catch (error) {
-          console.warn("Erreur nettoyage :", error);
+          console.warn(
+            "Erreur nettoyage AR :",
+            error
+          );
         }
       }
+
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ============================================
-  // DRAG DU LOGO (mode édition)
-  // ============================================
-  const logoDragState = useRef(null);
-
-  const handleLogoPointerDown = (e) => {
-    if (!editMode || editTarget !== "logo") return;
-    logoDragState.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      origin: { ...logoTransformRef.current },
-    };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-
-  const handleLogoPointerMove = (e) => {
-    if (!logoDragState.current) return;
-    const { startX, startY, origin } = logoDragState.current;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    setLogoTransform({
-      ...origin,
-      x: origin.x + dx * PX_TO_UNIT,
-      y: origin.y - dy * PX_TO_UNIT, // écran vers le bas = 3D vers le bas
-    });
-  };
-
-  const handleLogoPointerUp = () => {
-    logoDragState.current = null;
-  };
-
-  // ============================================
-  // DRAG DE LA CARTE (mode édition)
-  // ============================================
-  const cardDragState = useRef(null);
-
-  const handleCardHandlePointerDown = (e) => {
-    if (!editMode || editTarget !== "card" || !cardPos) return;
-    cardDragState.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      origin: { ...cardPos },
-    };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-
-  const handleCardHandlePointerMove = (e) => {
-    if (!cardDragState.current) return;
-    const { startX, startY, origin } = cardDragState.current;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    setCardPos({ x: origin.x + dx, y: origin.y + dy });
-  };
-
-  const handleCardHandlePointerUp = () => {
-    cardDragState.current = null;
-  };
-
-  const resetLogo = () => setLogoTransform(defaultLogoTransform);
-  const resetCard = () =>
-    setCardPos({ x: window.innerWidth / 2, y: window.innerHeight * 0.7 });
-
-  const nudgeScale = (delta) =>
-    setLogoTransform((t) => ({
-      ...t,
-      scale: Math.max(0.2, Math.min(3, t.scale + delta)),
-    }));
-
-  const nudgeRotation = (deltaDeg) =>
-    setLogoTransform((t) => ({
-      ...t,
-      rotation: t.rotation + (deltaDeg * Math.PI) / 180,
-    }));
-
   return (
-    <div ref={containerRef} className="ar-container">
-      <style>{`
-        .ar-container {
-          width: 100vw;
-          height: 100vh;
-          position: relative;
-          overflow: hidden;
-          touch-action: none;
-        }
+    <div
+      ref={containerRef}
+      className="ar-container"
+    >
+      {/* ---------------------------------------------
+          OVERLAY INTERFACE
+      --------------------------------------------- */}
 
-        /* ---------- overlay de drag pour le logo ---------- */
-        .ar-logo-drag-overlay {
-          position: absolute;
-          inset: 0;
-          z-index: 900;
-          cursor: grab;
-          background: rgba(37, 99, 235, 0.05);
-        }
-        .ar-logo-drag-overlay:active {
-          cursor: grabbing;
-        }
-
-        /* ---------- bouton mode édition ---------- */
-        .ar-edit-toggle {
-          position: absolute;
-          top: max(16px, env(safe-area-inset-top));
-          right: 16px;
-          z-index: 1100;
-          width: 46px;
-          height: 46px;
-          border-radius: 50%;
-          border: 1px solid rgba(255,255,255,0.15);
-          background: rgba(0,0,0,0.65);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
-          color: #fff;
-          font-size: 20px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 6px 20px rgba(0,0,0,0.35);
-        }
-        .ar-edit-toggle.active {
-          background: #2563EB;
-          border-color: #2563EB;
-        }
-
-        /* ---------- panneau d'édition ---------- */
-        .ar-edit-panel {
-          position: absolute;
-          top: max(70px, calc(env(safe-area-inset-top) + 70px));
-          right: 16px;
-          z-index: 1100;
-          background: rgba(0,0,0,0.7);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
-          border-radius: 16px;
-          padding: 14px;
-          color: #fff;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          border: 1px solid rgba(255,255,255,0.12);
-          width: 200px;
-        }
-
-        .ar-edit-tabs {
-          display: flex;
-          gap: 6px;
-          margin-bottom: 12px;
-        }
-
-        .ar-edit-tab {
-          flex: 1;
-          padding: 8px 6px;
-          border-radius: 10px;
-          border: 1px solid rgba(255,255,255,0.15);
-          background: rgba(255,255,255,0.05);
-          color: #fff;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .ar-edit-tab.active {
-          background: #2563EB;
-          border-color: #2563EB;
-        }
-
-        .ar-edit-hint {
-          font-size: 11px;
-          color: rgba(255,255,255,0.6);
-          line-height: 1.4;
-          margin-bottom: 12px;
-        }
-
-        .ar-edit-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 8px;
-          font-size: 12px;
-        }
-
-        .ar-edit-btns {
-          display: flex;
-          gap: 6px;
-        }
-
-        .ar-mini-btn {
-          width: 30px;
-          height: 30px;
-          border-radius: 8px;
-          border: 1px solid rgba(255,255,255,0.15);
-          background: rgba(255,255,255,0.08);
-          color: #fff;
-          font-size: 15px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .ar-reset-btn {
-          width: 100%;
-          margin-top: 6px;
-          padding: 8px;
-          border-radius: 10px;
-          border: 1px solid rgba(255,255,255,0.15);
-          background: rgba(255,255,255,0.05);
-          color: #fff;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        /* ---------- carte AR ---------- */
-        .ar-card {
-          position: absolute;
-          left: 0;
-          top: 0;
-          transform: translate(-50%, -50%) translateY(16px);
-          width: min(92%, 400px);
-          z-index: 1000;
-          opacity: 0;
-          pointer-events: none;
-          transition: opacity 0.45s ease, transform 0.45s ease;
-        }
-
-        .ar-card-visible {
-          opacity: 1;
-          transform: translate(-50%, -50%) translateY(0);
-          pointer-events: auto;
-        }
-
-        .ar-card-inner {
-          background: linear-gradient(180deg, rgba(20, 20, 24, 0.82), rgba(10, 10, 12, 0.88));
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
-          border-radius: 20px;
-          padding: 18px 22px 22px;
-          color: #ffffff;
-          text-align: center;
-          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
-
-        .ar-card-handle {
-          width: 40px;
-          height: 5px;
-          border-radius: 3px;
-          background: rgba(255,255,255,0.3);
-          margin: 0 auto 14px;
-        }
-
-        .ar-card-handle.draggable {
-          background: #2563EB;
-          cursor: grab;
-        }
-
-        .ar-card-name {
-          font-size: 21px;
-          font-weight: 700;
-          letter-spacing: 0.2px;
-          margin-bottom: 3px;
-        }
-
-        .ar-card-role {
-          font-size: 13px;
-          font-weight: 500;
-          color: rgba(255, 255, 255, 0.6);
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          margin-bottom: 16px;
-        }
-
-        .ar-card-divider {
-          height: 1px;
-          background: rgba(255, 255, 255, 0.1);
-          margin: 0 0 16px;
-        }
-
-        .ar-card-services {
-          font-size: 13.5px;
-          line-height: 1.7;
-          color: rgba(255, 255, 255, 0.85);
-          margin-bottom: 20px;
-        }
-
-        .ar-card-actions {
-          display: flex;
-          gap: 10px;
-        }
-
-        .ar-btn {
-          flex: 1;
-          padding: 13px 10px;
-          border-radius: 13px;
-          text-decoration: none;
-          font-size: 14px;
-          font-weight: 600;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 7px;
-          transition: transform 0.15s ease, filter 0.15s ease;
-        }
-
-        .ar-btn:active {
-          transform: scale(0.96);
-        }
-
-        .ar-btn-whatsapp {
-          background: #25d366;
-          color: #ffffff;
-        }
-
-        .ar-btn-call {
-          background: #2563eb;
-          color: #ffffff;
-        }
-      `}</style>
-
-      {/* Bouton pour activer/désactiver le mode édition */}
-      <button
-        className={`ar-edit-toggle ${editMode ? "active" : ""}`}
-        onClick={() => setEditMode((v) => !v)}
-        aria-label="Mode édition"
+      <div
+        className={`ar-interface ${
+          detected ? "is-visible" : ""
+        }`}
       >
-        ✏️
-      </button>
+        <div className="ar-glass-card">
 
-      {editMode && (
-        <div className="ar-edit-panel">
-          <div className="ar-edit-tabs">
-            <button
-              className={`ar-edit-tab ${editTarget === "logo" ? "active" : ""}`}
-              onClick={() => setEditTarget("logo")}
-            >
-              Logo
-            </button>
-            <button
-              className={`ar-edit-tab ${editTarget === "card" ? "active" : ""}`}
-              onClick={() => setEditTarget("card")}
-            >
-              Carte
-            </button>
-          </div>
+          {/* TOP */}
 
-          {editTarget === "logo" ? (
-            <>
-              <div className="ar-edit-hint">
-                Glisse n'importe où sur l'écran pour déplacer le logo sur la cible.
-              </div>
-              <div className="ar-edit-row">
-                <span>Taille</span>
-                <div className="ar-edit-btns">
-                  <button className="ar-mini-btn" onClick={() => nudgeScale(-0.1)}>−</button>
-                  <button className="ar-mini-btn" onClick={() => nudgeScale(0.1)}>+</button>
-                </div>
-              </div>
-              <div className="ar-edit-row">
-                <span>Rotation</span>
-                <div className="ar-edit-btns">
-                  <button className="ar-mini-btn" onClick={() => nudgeRotation(-15)}>↺</button>
-                  <button className="ar-mini-btn" onClick={() => nudgeRotation(15)}>↻</button>
-                </div>
-              </div>
-              <button className="ar-reset-btn" onClick={resetLogo}>
-                Réinitialiser le logo
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="ar-edit-hint">
-                Glisse la carte (barre bleue en haut de la carte) pour la placer où tu veux.
-              </div>
-              <button className="ar-reset-btn" onClick={resetCard}>
-                Réinitialiser la carte
-              </button>
-            </>
-          )}
-        </div>
-      )}
+          <div className="ar-profile">
 
-      {/* Zone de drag transparente pour repositionner le logo 3D */}
-      {editMode && editTarget === "logo" && (
-        <div
-          className="ar-logo-drag-overlay"
-          onPointerDown={handleLogoPointerDown}
-          onPointerMove={handleLogoPointerMove}
-          onPointerUp={handleLogoPointerUp}
-          onPointerCancel={handleLogoPointerUp}
-        />
-      )}
-
-      {/* Carte AR */}
-      {cardPos && (
-        <div
-          id="ar-business-card"
-          className="ar-card"
-          style={{ left: cardPos.x, top: cardPos.y }}
-        >
-          <div className="ar-card-inner">
-            <div
-              className={`ar-card-handle ${editMode && editTarget === "card" ? "draggable" : ""}`}
-              onPointerDown={handleCardHandlePointerDown}
-              onPointerMove={handleCardHandlePointerMove}
-              onPointerUp={handleCardHandlePointerUp}
-              onPointerCancel={handleCardHandlePointerUp}
-            />
-            <div className="ar-card-name">AuriTech</div>
-            <div className="ar-card-role">Génie logiciel</div>
-            <div className="ar-card-divider" />
-            <div className="ar-card-services">
-              Développement Web • Mobile
-              <br />
-              Logiciels sur mesure
+            <div className="ar-avatar">
+              <span>A</span>
             </div>
-            <div className="ar-card-actions">
-            <a  
-                href="https://wa.me/24176516458"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ar-btn ar-btn-whatsapp"
-              >
-                💬 WhatsApp
-              </a>
-              <a href="tel:+24176516458" className="ar-btn ar-btn-call">
-                📞 Appeler
-              </a>
+
+            <div className="ar-profile-info">
+              <div className="ar-name">
+                AuriTech
+              </div>
+
+              <div className="ar-role">
+                Ingénierie informatique
+              </div>
+            </div>
+
+            <div className="ar-status">
+              <span />
+              CONNECTÉ
             </div>
           </div>
+
+          {/* DIVIDER */}
+
+          <div className="ar-divider" />
+
+          {/* DESCRIPTION */}
+
+          <div className="ar-description">
+            <strong>
+              Solutions numériques sur mesure.
+            </strong>
+
+            <span>
+              Développement Web · Mobile · Logiciels
+            </span>
+          </div>
+
+          {/* ACTIONS */}
+
+          <div className="ar-actions">
+
+            <a
+              href="https://wa.me/24176516458"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ar-action ar-whatsapp"
+            >
+              <div className="ar-action-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M21 11.5a8.38 8.38 0 0 1-9 8.3 8.5 8.5 0 0 1-4-.9L3 20l1.2-4.7A8.4 8.4 0 1 1 21 11.5Z" />
+                  <path d="M8.5 9.5c.2-.4.4-.5.7-.5h.5c.2 0 .4.1.5.4l.7 1.5c.1.2.1.4 0 .6l-.4.5c-.1.2-.1.4 0 .6.4.7 1 1.3 1.7 1.7.2.1.4.1.6 0l.5-.4c.2-.1.4-.1.6 0l1.5.7c.2.1.3.3.3.5v.5c0 .3-.1.5-.5.7-.4.2-1 .3-1.5.1-1-.3-2.2-1-3.2-2-1-.9-1.7-2.1-2-3.1-.2-.6-.1-1.2.1-1.6Z" />
+                </svg>
+              </div>
+
+              <div>
+                <strong>
+                  WhatsApp
+                </strong>
+
+                <span>
+                  Nous contacter
+                </span>
+              </div>
+
+              <div className="ar-arrow">
+                →
+              </div>
+            </a>
+
+            <a
+              href="tel:+24176516458"
+              className="ar-action ar-call"
+            >
+              <div className="ar-action-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92Z" />
+                </svg>
+              </div>
+
+              <div>
+                <strong>
+                  Appeler
+                </strong>
+
+                <span>
+                  +241 76 51 64 58
+                </span>
+              </div>
+
+              <div className="ar-arrow">
+                →
+              </div>
+            </a>
+
+          </div>
+
+          {/* FOOTER */}
+
+          <div className="ar-footer">
+            <span>
+              AURITECH
+            </span>
+
+            <span>
+              TECHNOLOGY
+            </span>
+          </div>
+
         </div>
-      )}
+      </div>
+
+      {/* ---------------------------------------------
+          SCAN UI
+      --------------------------------------------- */}
+
+      <div
+        className={`ar-scanner ${
+          detected
+            ? "scanner-hidden"
+            : ""
+        }`}
+      >
+
+        <div className="ar-scanner-title">
+          {loading
+            ? "INITIALISATION..."
+            : "SCANNEZ LA CARTE"}
+        </div>
+
+        <div className="scanner-frame">
+          <div className="corner top-left" />
+          <div className="corner top-right" />
+          <div className="corner bottom-left" />
+          <div className="corner bottom-right" />
+
+          <div className="scanner-line" />
+        </div>
+
+        <div className="ar-scanner-subtitle">
+          Placez la carte dans le cadre
+        </div>
+
+      </div>
+
+      {/* ---------------------------------------------
+          DETECTED BADGE
+      --------------------------------------------- */}
+
+      <div
+        className={`ar-detected ${
+          detected
+            ? "detected-visible"
+            : ""
+        }`}
+      >
+        <span className="detected-dot" />
+        CARTE DÉTECTÉE
+      </div>
+
     </div>
   );
 }

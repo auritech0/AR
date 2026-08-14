@@ -1,7 +1,5 @@
 import ARScene from "./ARScene";
 
-function App() {
+export default function App() {
   return <ARScene />;
 }
-
-export default App;
